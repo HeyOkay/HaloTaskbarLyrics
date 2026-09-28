@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Windows 10 2004+ / Windows 11: нужен для Windows.Media.Control (SMTC) -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TaskbarLyrics</RootNamespace>
+    <AssemblyName>HaloTaskbarLyrics</AssemblyName>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <!-- Версия программы. Для нового релиза поднять здесь и поставить такой же тег на GitHub: v0.1.0 -->
+    <Version>0.1.0</Version>
+
+    <!-- Сведения о программе в свойствах exe. Файл без них антивирусы считают подозрительнее -->
+    <Product>HaloTaskbarLyrics</Product>
+    <AssemblyTitle>HaloTaskbarLyrics</AssemblyTitle>
+    <Description>Synced song lyrics on the Windows taskbar</Description>
+    <Company>HeyOkay</Company>
+    <Authors>HeyOkay</Authors>
+    <Copyright>Copyright © 2026 HeyOkay</Copyright>
+    <NeutralLanguage>en</NeutralLanguage>
+
+    <!-- Один небольшой exe; нужен установленный .NET 10 Desktop Runtime. Если его нет, Windows сама покажет
+         окно «нужно установить .NET» с кнопкой, которая открывает страницу загрузки Microsoft -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Нет .NET 10, но есть более новый — запускаемся на нём, а не просим ставить десятый -->
+    <RollForward>Major</RollForward>
+    <!-- Переводы служебных сообщений библиотек — только английский и русский -->
+    <SatelliteResourceLanguages>en;ru</SatelliteResourceLanguages>
+    <!-- Отладочные символы внутри exe, отдельный .pdb рядом не нужен -->
+    <DebugType>embedded</DebugType>
+    <!-- Значок программы (exe, ярлык, окна) -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Манифест: говорит Windows, что программа для Windows 10/11 — без этого виджет нельзя встроить в панель задач -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Захват звука колонок для «дышащей» ноты в проигрышах -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
+  <!-- WPF не включает эти пространства имён в ImplicitUsings -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
+
+</Project>

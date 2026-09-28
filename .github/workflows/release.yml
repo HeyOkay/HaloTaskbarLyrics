@@ -1,0 +1,50 @@
+# Builds HaloTaskbarLyrics.exe on GitHub's servers and creates a DRAFT release.
+# How to release: raise <Version> in TaskbarLyrics.csproj, commit, then push a tag with the same number:
+#   git tag v0.2.0 && git push origin v0.2.0   (or create the tag in GitHub Desktop)
+# Then open the draft on GitHub, check the exe on virustotal.com and press "Publish release".
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check that the tag matches the version in the project
+        shell: pwsh
+        run: |
+          $v = ([xml](Get-Content TaskbarLyrics.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ("v$v" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match <Version>$v</Version> in TaskbarLyrics.csproj"
+          }
+
+      - name: Build
+        shell: pwsh
+        run: dotnet publish TaskbarLyrics.csproj -c Release -o publish
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash publish/HaloTaskbarLyrics.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  HaloTaskbarLyrics.exe" | Out-File -Encoding ascii publish/HaloTaskbarLyrics.exe.sha256
+          "SHA-256: $h"
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}"
+          publish/HaloTaskbarLyrics.exe publish/HaloTaskbarLyrics.exe.sha256
+          --draft --title "HaloTaskbarLyrics ${{ github.ref_name }}" --generate-notes

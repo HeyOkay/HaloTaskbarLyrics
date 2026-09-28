@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+publish/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Local notes for working with Claude (personal paths, not for the public repo)
+PROJECT_CONTEXT.md
+
+# Logs and local data that may get copied here while debugging
+*.log
+settings.json

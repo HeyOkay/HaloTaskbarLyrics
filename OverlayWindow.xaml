@@ -1,0 +1,49 @@
+<Window x:Class="TaskbarLyrics.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HaloTaskbarLyrics"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        Width="420" Height="48" UseLayoutRounding="True">
+
+    <Window.Resources>
+        <Style x:Key="LineStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <!-- Окно прозрачное, ClearType в нём недоступен: чёткий режим с выравниванием по пикселям -->
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+        </Style>
+    </Window.Resources>
+
+    <!-- Фон полностью прозрачный: клики проходят сквозь виджет на панель задач. Ловит клики только HitZone -->
+    <Border x:Name="Root" Background="{x:Null}" Padding="10,0" Cursor="SizeWE" ClipToBounds="True"
+            ToolTipService.InitialShowDelay="600">
+        <!-- Слева — строка текста, справа — кольцо-визуализатор (видно всегда, стоит как ещё один значок трея) -->
+        <Grid x:Name="Stage">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="RingColumn" Width="24"/>
+            </Grid.ColumnDefinitions>
+            <!-- Зона, где работают клики (меню, перетаскивание, подсказка): почти прозрачная, прижата к кольцу.
+                 Есть строка текста — правая половина виджета, нет текста — только кольцо. Ширину задаёт код -->
+            <Border x:Name="HitZone" Grid.ColumnSpan="2" HorizontalAlignment="Right" Width="24" Background="#01000000"/>
+            <!-- Две строки: пока одна растворяется, другая проявляется -->
+            <Grid x:Name="TextArea" Grid.Column="0" Margin="0,0,6,0">
+                <TextBlock x:Name="GlowFar" Style="{StaticResource LineStyle}"/>
+                <TextBlock x:Name="GlowLine" Style="{StaticResource LineStyle}"/>
+                <TextBlock x:Name="LineA" Style="{StaticResource LineStyle}"/>
+                <TextBlock x:Name="LineB" Style="{StaticResource LineStyle}"/>
+            </Grid>
+            <!-- Кольцо: размером со значок в трее, с небольшим свечением -->
+            <Ellipse x:Name="Ring" Grid.Column="1" Width="15" Height="15" HorizontalAlignment="Center" VerticalAlignment="Center"
+                     Opacity="0" IsHitTestVisible="False" StrokeThickness="1.5" RenderTransformOrigin="0.5,0.5"/>
+        </Grid>
+    </Border>
+</Window>

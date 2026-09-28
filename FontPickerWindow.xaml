@@ -1,0 +1,50 @@
+<Window x:Class="TaskbarLyrics.FontPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Шрифт — HaloTaskbarLyrics"
+        Width="500" Height="620" MinWidth="440" MinHeight="420"
+        WindowStartupLocation="CenterScreen" Topmost="True"
+        Background="{DynamicResource WindowBackground}"
+        Foreground="{DynamicResource MenuForeground}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBox x:Name="Search" Tag="Поиск шрифта…"/>
+
+        <!-- Как будет выглядеть строка на панели задач -->
+        <Border Grid.Row="1" Margin="0,12" Padding="14,12" CornerRadius="6"
+                Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1">
+            <TextBlock x:Name="Preview" Text="Караоке на панели задач ♪ 0123" FontSize="20" TextTrimming="CharacterEllipsis"/>
+        </Border>
+
+        <ListBox x:Name="FontList" Grid.Row="2">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontFamily="{Binding Family}" FontSize="16" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Note}" FontSize="11" Foreground="{DynamicResource MenuForegroundDim}"
+                                   Visibility="{Binding NoteVisibility}"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Grid Grid.Row="3" Margin="0,14,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="AddBtn" Content="Добавить из файла…"/>
+                <Button x:Name="FolderBtn" Content="Папка" Margin="8,0,0,0"
+                        ToolTip="Открыть папку, где хранятся добавленные вами шрифты"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelBtn" Content="Отмена" IsCancel="True"/>
+                <Button x:Name="OkBtn" Content="Выбрать" IsDefault="True" Margin="8,0,0,0" Style="{StaticResource AccentButton}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
