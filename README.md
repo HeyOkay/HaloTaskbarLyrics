@@ -76,6 +76,8 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a `v
 Lyrics by [LRCLIB](https://lrclib.net). Audio capture by [NAudio](https://github.com/naudio/NAudio).
 See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+Built with help from [Claude](https://claude.ai) by Anthropic.
+
 ## License
 
 [MIT](LICENSE)

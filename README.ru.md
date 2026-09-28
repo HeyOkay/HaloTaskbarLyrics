@@ -74,6 +74,8 @@ dotnet publish src/HaloTaskbarLyrics.csproj -c Release -o publish
 Тексты — [LRCLIB](https://lrclib.net). Захват звука — [NAudio](https://github.com/naudio/NAudio).
 Подробнее — [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+Сделано с помощью [Claude](https://claude.ai) от Anthropic.
+
 ## Лицензия
 
 [MIT](LICENSE)
