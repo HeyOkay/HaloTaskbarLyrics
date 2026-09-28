@@ -84,7 +84,7 @@ public sealed class LyricsFlyout : Window
     double _boxH = Box;                 // текущая высота блока с текстом (плавно идёт к нужной)
     double _boxTarget = Box;            // к какой высоте блок шёл в прошлом кадре
     DateTime _holdSince;                // с какого момента блок «ждёт» (между треками), держа прежний размер
-    double _lyricsAlpha, _statusAlpha;  // прозрачность текста песни и надписи (плавная смена)
+    double _lyricsAlpha;  // прозрачность текста песни (плавная смена)
     bool _closing;
     DateTime _lastFrame;
 
@@ -866,7 +866,6 @@ public sealed class LyricsFlyout : Window
         double fade = _settled ? 1 - Math.Exp(-dt / 0.09) : 1;
 
         // Надписей о состоянии («текст не найден», «ищу текст…») в панели нет: нет текста — блок просто сжимается
-        _statusAlpha = 0;
         if (_status.Opacity != 0) _status.Opacity = 0;
         double hide = 1 - _coverE; // развёрнутая обложка закрывает текст — он тает
 

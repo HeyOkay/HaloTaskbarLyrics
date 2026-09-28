@@ -8,6 +8,8 @@
 
 <sub>The track, lyrics and cover in the panel preview are original demo material made for this README.</sub>
 
+![Any font, any accent color, light or dark taskbar](docs/fonts.png)
+
 Synced lyrics of the song that's playing right now — as a single line on the Windows taskbar,
 next to a small ring that breathes with the music.
 
