@@ -1,6 +1,8 @@
 # HaloTaskbarLyrics
 
-![HaloTaskbarLyrics](docs/preview.gif)
+![HaloTaskbarLyrics](docs/banner.png)
+
+![HaloTaskbarLyrics in action](docs/preview.gif)
 
 Synced lyrics of the song that's playing right now — as one karaoke line on the Windows taskbar,
 next to a small ring that breathes with the music.
@@ -56,7 +58,7 @@ Settings, cache and logs are stored in `%LOCALAPPDATA%\HaloTaskbarLyrics`.
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ```powershell
-dotnet publish TaskbarLyrics.csproj -c Release -o publish
+dotnet publish src/HaloTaskbarLyrics.csproj -c Release -o publish
 # result: publish\HaloTaskbarLyrics.exe
 ```
 

@@ -1,6 +1,8 @@
 # HaloTaskbarLyrics
 
-![HaloTaskbarLyrics](docs/preview.gif)
+![HaloTaskbarLyrics](docs/banner.png)
+
+![HaloTaskbarLyrics in action](docs/preview.gif)
 
 Текст песни, которая играет прямо сейчас, — одной караоке-строкой на панели задач Windows,
 рядом с маленьким кольцом, которое «дышит» под музыку.
@@ -55,7 +57,7 @@
 Нужен [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ```powershell
-dotnet publish TaskbarLyrics.csproj -c Release -o publish
+dotnet publish src/HaloTaskbarLyrics.csproj -c Release -o publish
 # результат: publish\HaloTaskbarLyrics.exe
 ```
 

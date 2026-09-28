@@ -1,5 +1,5 @@
 # Builds HaloTaskbarLyrics.exe on GitHub's servers and creates a DRAFT release.
-# How to release: raise <Version> in TaskbarLyrics.csproj, commit, then push a tag with the same number:
+# How to release: raise <Version> in src/HaloTaskbarLyrics.csproj, commit, then push a tag with the same number:
 #   git tag v0.2.0 && git push origin v0.2.0   (or create the tag in GitHub Desktop)
 # Then open the draft on GitHub, check the exe on virustotal.com and press "Publish release".
 name: Release
@@ -24,14 +24,14 @@ jobs:
       - name: Check that the tag matches the version in the project
         shell: pwsh
         run: |
-          $v = ([xml](Get-Content TaskbarLyrics.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          $v = ([xml](Get-Content src/HaloTaskbarLyrics.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
           if ("v$v" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} does not match <Version>$v</Version> in TaskbarLyrics.csproj"
+            throw "Tag ${{ github.ref_name }} does not match <Version>$v</Version> in src/HaloTaskbarLyrics.csproj"
           }
 
       - name: Build
         shell: pwsh
-        run: dotnet publish TaskbarLyrics.csproj -c Release -o publish
+        run: dotnet publish src/HaloTaskbarLyrics.csproj -c Release -o publish
 
       - name: Checksum
         shell: pwsh

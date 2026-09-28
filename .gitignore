@@ -16,3 +16,6 @@ PROJECT_CONTEXT.md
 # Logs and local data that may get copied here while debugging
 *.log
 settings.json
+
+# Temporary copies of Windows fonts for drawing the README banner (not redistributable)
+_tmp_fonts/
