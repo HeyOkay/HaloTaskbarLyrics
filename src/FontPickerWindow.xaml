@@ -20,7 +20,7 @@
         <!-- Как будет выглядеть строка на панели задач -->
         <Border Grid.Row="1" Margin="0,12" Padding="14,12" CornerRadius="6"
                 Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1">
-            <TextBlock x:Name="Preview" Text="Караоке на панели задач ♪ 0123" FontSize="20" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="Preview" Text="Текст песни на панели задач ♪ 0123" FontSize="20" TextTrimming="CharacterEllipsis"/>
         </Border>
 
         <ListBox x:Name="FontList" Grid.Row="2">

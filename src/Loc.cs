@@ -85,7 +85,7 @@ public static class L
         // Font picker
         ["pickerTitle"] = ("Font — HaloTaskbarLyrics", "Шрифт — HaloTaskbarLyrics"),
         ["searchFonts"] = ("Search fonts…", "Поиск шрифта…"),
-        ["preview"] = ("Karaoke on your taskbar ♪ 0123", "Караоке на панели задач ♪ 0123"),
+        ["preview"] = ("Lyrics on your taskbar ♪ 0123", "Текст песни на панели задач ♪ 0123"),
         ["addFromFile"] = ("Add from file…", "Добавить из файла…"),
         ["folder"] = ("Folder", "Папка"),
         ["folderTip"] = ("Open the folder with the fonts you added", "Открыть папку, где хранятся добавленные вами шрифты"),

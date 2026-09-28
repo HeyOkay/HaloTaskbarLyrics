@@ -39,9 +39,9 @@ public partial class OverlayWindow : Window
     bool _dissolving;           // строка медленно растворяется в паузе
     bool _activeHidden;         // активная строка уже растворена (невидима)
 
-    // Караоке-сцена: активная строка и строка, которая сейчас уходит
+    // Сцена: активная строка и строка, которая сейчас уходит
     TextBlock _active, _idle;
-    bool _karaoke;              // активная строка — строка текста (заливка идёт)
+    bool _singing;              // активная строка — строка текста (заливка идёт)
     Color _hi, _dim, _glow;
     Color _sung;                // цвет пропетой части: обычный или акцентный
 
@@ -251,7 +251,7 @@ public partial class OverlayWindow : Window
         return p + TimeSpan.FromMilliseconds(offset);
     }
 
-    /// <summary>Каждый кадр: смена строки + заливка караоке.</summary>
+    /// <summary>Каждый кадр: смена строки + заливка пропетого.</summary>
     void OnRender(object? sender, EventArgs e)
     {
         AnimateRing();
@@ -296,12 +296,12 @@ public partial class OverlayWindow : Window
             }
             else
             {
-                _karaoke = true;
+                _singing = true;
                 Transition(_lines[i].Text, 0, tip);
             }
         }
 
-        if (_karaoke && i >= 0)
+        if (_singing && i >= 0)
         {
             var fraction = Fraction(i, pos);
             SetFill(_active, fraction);
@@ -329,7 +329,7 @@ public partial class OverlayWindow : Window
 
         _dissolving = true;
         _activeHidden = true;
-        _karaoke = false;
+        _singing = false;
         SetFill(_active, 1);
         HideGlow(dur * 0.7);
         Animate(_active, show: false, duration: dur, slow: true);
@@ -367,7 +367,7 @@ public partial class OverlayWindow : Window
     void ShowVisualizer(string? tooltip)
     {
         _titleGlow = false;
-        _karaoke = false;
+        _singing = false;
         Transition("", 0, tooltip);
     }
 
@@ -384,7 +384,7 @@ public partial class OverlayWindow : Window
         tg.Children.Add(new TranslateTransform(0, 0));
         tb.RenderTransform = tg;
 
-        // Караоке-заливка: [пропето][мягкий край][ещё не пропето]
+        // Заливка пропетого: [пропето][мягкий край][ещё не пропето]
         tb.Foreground = new LinearGradientBrush
         {
             StartPoint = new Point(0, 0.5),
@@ -432,7 +432,7 @@ public partial class OverlayWindow : Window
         FitText(incoming);
         ResetLineColors(incoming);
         SetFill(incoming, fill);
-        bool letters = _karaoke && fill == 0 && _settings.LetterFx;
+        bool letters = _singing && fill == 0 && _settings.LetterFx;
         if (letters)
         {
             try { AnimateLetters(incoming); }
@@ -475,7 +475,7 @@ public partial class OverlayWindow : Window
         {
             if (tb.Effect != blur) return; // уже идёт другой переход
             tb.Effect = show && _active == tb ? Glow() : null; // после появления — лёгкое свечение для читаемости
-            if (show && _active == tb && (_karaoke || _titleGlow)) ShowGlow(tb);
+            if (show && _active == tb && (_singing || _titleGlow)) ShowGlow(tb);
         };
 
         tb.BeginAnimation(OpacityProperty, opacity);
@@ -579,7 +579,7 @@ public partial class OverlayWindow : Window
     {
         _settings.Glow = !_settings.Glow;
         _settings.Save();
-        if (_settings.Glow && _karaoke) ShowGlow(_active);
+        if (_settings.Glow && _singing) ShowGlow(_active);
         else
         {
             HideGlow(TimeSpan.FromMilliseconds(200));
@@ -653,7 +653,7 @@ public partial class OverlayWindow : Window
     void ResetLineColors(TextBlock tb)
     {
         if (tb.Foreground is not LinearGradientBrush b) return;
-        var sung = _karaoke ? _sung : _hi; // статусы и заголовок — обычным цветом
+        var sung = _singing ? _sung : _hi; // статусы и заголовок — обычным цветом
         b.GradientStops[0].Color = sung;
         b.GradientStops[1].Color = sung;
         b.GradientStops[2].Color = _dim;
@@ -702,7 +702,7 @@ public partial class OverlayWindow : Window
 
     /// <summary>
     /// Каждая буква новой строки выплывает снизу под углом, проявляется и встаёт на место с лёгкой «пружинкой».
-    /// Пока буква летит, у неё свой цвет; когда встала — эффект снимается и работает обычная караоке-заливка.
+    /// Пока буква летит, у неё свой цвет; когда встала — эффект снимается и работает обычная заливка пропетого.
     /// </summary>
     void AnimateLetters(TextBlock tb)
     {
@@ -779,7 +779,7 @@ public partial class OverlayWindow : Window
         {
             if (tb.Foreground is LinearGradientBrush b)
             {
-                var sung = _karaoke && tb == _active ? _sung : _hi;
+                var sung = _singing && tb == _active ? _sung : _hi;
                 b.GradientStops[0].Color = sung;
                 b.GradientStops[1].Color = sung;
                 b.GradientStops[2].Color = _dim;

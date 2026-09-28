@@ -4,7 +4,7 @@
 
 ![HaloTaskbarLyrics in action](docs/preview.gif)
 
-Synced lyrics of the song that's playing right now — as one karaoke line on the Windows taskbar,
+Synced lyrics of the song that's playing right now — as a single line on the Windows taskbar,
 next to a small ring that breathes with the music.
 
 [Русская версия](README.ru.md)
@@ -18,7 +18,7 @@ next to a small ring that breathes with the music.
 - **Lives inside the taskbar**: sticks to the system tray and follows it when icons appear or
   disappear, doesn't blink when you minimize windows, hides together with the taskbar in
   fullscreen games and videos.
-- Karaoke fill, letters floating in, a soft glow in your Windows accent color, light and dark
+- Sung words fill in as the song plays, letters float in, a soft glow in your Windows accent color, light and dark
   taskbar support, any system font or your own `.ttf`/`.otf`.
 - English and Russian interface.
 

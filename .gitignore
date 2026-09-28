@@ -19,3 +19,6 @@ settings.json
 
 # Temporary copies of Windows fonts for drawing the README banner (not redistributable)
 _tmp_fonts/
+
+# Local helper scripts (banner generator needs Windows fonts that cannot be redistributed)
+_local/
