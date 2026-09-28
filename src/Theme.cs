@@ -85,9 +85,50 @@ public static class Theme
         Set("SelectedBackground", Color.FromArgb(0x40, accent.R, accent.G, accent.B));
     }
 
-    /// <summary>Акцентный цвет Windows.</summary>
+    // Системный акцент — через UISettings (как у приложений Windows): он же меняется, когда Windows сама
+    // подбирает цвет под обои. Держим объект, чтобы работало событие ColorValuesChanged
+    static readonly global::Windows.UI.ViewManagement.UISettings? Ui = CreateUi();
+
+    /// <summary>Сменился акцентный цвет Windows (например, после смены обоев). Приходит не из потока окна.</summary>
+    public static event Action? AccentChanged;
+
+    static global::Windows.UI.ViewManagement.UISettings? CreateUi()
+    {
+        try
+        {
+            var ui = new global::Windows.UI.ViewManagement.UISettings();
+            ui.ColorValuesChanged += (_, _) => AccentChanged?.Invoke();
+            return ui;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Акцентный цвет Windows. Сначала UISettings (актуальный, в том числе «автоматически по обоям»),
+    /// потом реестр: Explorer\Accent (цвет меню «Пуск»), и в последнюю очередь DWM (цвет заголовков —
+    /// он при автоматическом выборе по обоям может не обновляться).
+    /// </summary>
     static Color AccentColor()
     {
+        try
+        {
+            if (Ui != null)
+            {
+                var c = Ui.GetColorValue(global::Windows.UI.ViewManagement.UIColorType.Accent);
+                if (c.A != 0) return Color.FromRgb(c.R, c.G, c.B);
+            }
+        }
+        catch { }
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent");
+            if (k?.GetValue("AccentColorMenu") is int v)
+            {
+                var u = unchecked((uint)v); // ABGR
+                return Color.FromRgb((byte)u, (byte)(u >> 8), (byte)(u >> 16));
+            }
+        }
+        catch { }
         try
         {
             using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM");

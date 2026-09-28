@@ -12,3 +12,9 @@ HaloTaskbarLyrics uses the following components.
 Lyrics are not included in the program. They are downloaded at run time from
 [LRCLIB](https://lrclib.net), a free, open, community-maintained lyrics database, or read from
 the user's own `.lrc` files. Lyrics belong to their respective rights holders.
+
+## Album covers
+
+When the player doesn't pass a cover to Windows, the lyrics panel looks the track up in the
+[Deezer API](https://developers.deezer.com/api) (artist and title only) and shows the album cover.
+Covers are not included in the program; they belong to their respective rights holders.

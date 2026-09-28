@@ -34,8 +34,10 @@ public partial class OverlayWindow : Window
     CancellationTokenSource? _cts;
     bool _polling, _dragging, _hiddenForFullscreen;
     bool _embedded;             // виджет живёт внутри окна панели задач
+    string? _lyricsStatusKey;   // почему нет синхронного текста (ключ строки Loc) — для панели с текстом
+    bool _ringClick;            // левую кнопку нажали на кольце: при отпускании — открыть/закрыть панель с текстом
+    int _clickStartX;
     int _dragStartCursorX, _dragStartWindowX;
-    DateTime _holdUntil;
     bool _dissolving;           // строка медленно растворяется в паузе
     bool _activeHidden;         // активная строка уже растворена (невидима)
 
@@ -55,6 +57,9 @@ public partial class OverlayWindow : Window
     readonly AudioLevel _audio = new();
     DateTime _audioRetry;       // когда можно снова попробовать включить захват звука
     double _ringFade;           // плавное появление кольца при запуске
+    bool _ringPressed;          // кнопку мыши держат на кольце — оно сжимается в залитую точку
+    double _ringPress;          // 0…1, плавно
+    readonly SolidColorBrush _ringFill = new(Colors.Transparent) { Opacity = 0 };
     int? _trayLeft;             // левая граница трея, физ. пиксели
     int _trayButton;            // ширина кнопки трея, физ. пиксели (0 — неизвестна)
     bool _trayBusy;
@@ -68,7 +73,7 @@ public partial class OverlayWindow : Window
     bool _glowOn;               // свечение пропетого текста сейчас видно (тоже «дышит» от музыки)
     double _noteLevel;
     double _glowFast, _glowSlow;  // уровень для свечения: быстрый (вспышки) и медленный (фон)
-    const double GlowOpacity = 0.5;
+    internal const double GlowOpacity = 0.5;
 
     const int NoTimelineIndex = -1000;
 
@@ -100,6 +105,12 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
+        if (string.IsNullOrEmpty(_settings.Language))
+        {
+            // Первый запуск: язык интерфейса — по языку Windows
+            _settings.Language = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru" ? "ru" : "en";
+            _settings.Save();
+        }
         L.Set(_settings.Language);
         Diag.SetEnabled(_settings.Diagnostics);
         if (_settings.Locked) Root.Cursor = Cursors.Arrow;
@@ -143,6 +154,7 @@ public partial class OverlayWindow : Window
         Closed += (_, _) =>
         {
             CompositionTarget.Rendering -= OnRender;
+            LyricsFlyout.CloseOpen();
             _slow.Stop();
             _trayTimer.Stop();
             _updateTimer.Stop();
@@ -163,8 +175,60 @@ public partial class OverlayWindow : Window
         };
 
         SystemEvents.UserPreferenceChanged += (_, _) => Dispatcher.Invoke(ApplyTheme);
+        // Акцент сменился (в том числе Windows подобрала его под новые обои) — перекрашиваемся сразу
+        Theme.AccentChanged += () => Dispatcher.BeginInvoke(new Action(ApplyTheme));
 
     }
+
+    // ---------------- Для панели с текстом (LyricsFlyout) ----------------
+
+    internal TrackInfo? CurrentTrack => _track;
+    internal List<LyricLine>? CurrentLines => _lines;
+    internal MediaSnapshot? CurrentSnapshot => _snap;
+    internal MediaWatcher Media => _media;
+    internal Settings Prefs => _settings;
+    internal string? LyricsStatusKey => _lyricsStatusKey;
+    /// <summary>Позиция для текста (с ручным сдвигом синхронизации).</summary>
+    internal TimeSpan PlaybackPosition => _snap == null ? TimeSpan.Zero : CurrentPosition();
+    /// <summary>Позиция в треке, как её сообщает плеер (для полосы времени).</summary>
+    internal TimeSpan RawPosition => _snap is { } s ? s.Position + (s.Playing ? _sincePoll.Elapsed * s.Rate : TimeSpan.Zero) : TimeSpan.Zero;
+    internal double LineFill(int i, TimeSpan pos) => _lines != null && i >= 0 && i < _lines.Count ? Fraction(i, pos) : 0;
+    /// <summary>Ручной сдвиг синхронизации текущего трека (меню «Синхронизация»).</summary>
+    internal TimeSpan TrackOffset => _track != null ? TimeSpan.FromMilliseconds(_settings.TrackOffsets.GetValueOrDefault(_track.Key)) : TimeSpan.Zero;
+    /// <summary>Когда заливка строки i доходит до конца (для панели с текстом).</summary>
+    internal TimeSpan LineEndAt(int i) => _lines != null && i >= 0 && i < _lines.Count ? LineEnd(i) : TimeSpan.Zero;
+    internal Task RefreshMediaAsync() => PollAsync();
+
+    /// <summary>Центр кольца на экране, физические пиксели.</summary>
+    internal Point RingScreenCenter()
+    {
+        try
+        {
+            // Центр кольца внутри нашего окна (DIP) + положение окна на экране (физ. пиксели).
+            // Так точнее, чем PointToScreen, для окна, встроенного в панель задач
+            var c = Ring.TranslatePoint(new Point(Ring.ActualWidth / 2, Ring.ActualHeight / 2), this);
+            if (_hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r))
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                return new Point(r.Left + c.X * dpi.DpiScaleX, r.Top + c.Y * dpi.DpiScaleY);
+            }
+            return Ring.PointToScreen(new Point(Ring.ActualWidth / 2, Ring.ActualHeight / 2));
+        }
+        catch
+        {
+            Native.GetCursorPos(out var p);
+            return new Point(p.X, p.Y);
+        }
+    }
+
+    void ToggleFlyout()
+    {
+        if (LyricsFlyout.IsOpen) LyricsFlyout.CloseOpen();
+        else if (!LyricsFlyout.JustClosed) LyricsFlyout.Open(this); // только что закрылась этим же кликом — не открываем снова
+    }
+
+    /// <summary>Курсор над кольцом (его колонкой справа).</summary>
+    bool IsOverRing(MouseEventArgs e) => e.GetPosition(Stage).X >= Stage.ActualWidth - RingColumn.ActualWidth - 2;
 
     // ---------------- Трек и текст ----------------
 
@@ -184,10 +248,25 @@ public partial class OverlayWindow : Window
                 Diag.Write(t == null ? "Track: none" : $"Track: \"{t.Artist}\" — \"{t.Title}\", album \"{t.Album}\", {t.Duration:m\\:ss}, player {t.Source}");
                 _track = t;
                 OnTrackChanged();
+                if (t != null) RememberCover(t);
             }
         }
         catch (Exception ex) { App.Log(ex.ToString()); }
         finally { _polling = false; }
+    }
+
+    /// <summary>
+    /// Через 2 с после начала трека запоминаем его обложку — чтобы потом узнать её, если плеер
+    /// по ошибке покажет её у другого трека без обложки (см. MediaWatcher.GetCoverAsync).
+    /// </summary>
+    async void RememberCover(TrackInfo t)
+    {
+        try
+        {
+            await Task.Delay(2000);
+            if (_track?.Key == t.Key) await _media.GetCoverAsync(t);
+        }
+        catch (Exception ex) { Diag.Write("Cover: " + ex.Message); }
     }
 
     void OnTrackChanged(bool force = false)
@@ -197,6 +276,7 @@ public partial class OverlayWindow : Window
         _shownIndex = int.MinValue;
 
         var t = _track;
+        _lyricsStatusKey = t == null ? null : "searching";
         if (t == null) { ShowStatus("", null); return; }
 
         // Без значка в самой строке: когда текст загрузится, заголовок уже тот же и не перерисовывается
@@ -216,20 +296,24 @@ public partial class OverlayWindow : Window
                 : $"Lyrics: source {r.Source}, synced {(!string.IsNullOrWhiteSpace(r.Synced) ? "yes" : "no")}, plain {(!string.IsNullOrWhiteSpace(r.Plain) ? "yes" : "no")}, instrumental {r.Instrumental}");
             if (r == null)
             {
+                _lyricsStatusKey = "notFound";
                 ShowTrackStatus(t, SymNotFound, L.S("notFound"));
             }
             else if (r.Instrumental)
             {
+                _lyricsStatusKey = "instrumental";
                 ShowTrackStatus(t, SymInstrumental, L.S("instrumental"));
             }
             else if (!string.IsNullOrWhiteSpace(r.Synced) && LrcParser.Parse(r.Synced) is { Count: > 0 } lines)
             {
+                _lyricsStatusKey = null;
                 _lines = lines;
                 _source = r.Source;
                 _shownIndex = int.MinValue; // OnRender сам покажет нужную строку
             }
             else
             {
+                _lyricsStatusKey = "untimed";
                 ShowTrackStatus(t, SymUntimed, L.S("untimed"));
             }
         }
@@ -238,7 +322,10 @@ public partial class OverlayWindow : Window
         {
             App.Log(ex.ToString());
             if (!ct.IsCancellationRequested)
+            {
+                _lyricsStatusKey = "netError";
                 ShowTrackStatus(t, SymError, L.S("netError"));
+            }
         }
     }
 
@@ -256,12 +343,15 @@ public partial class OverlayWindow : Window
     {
         AnimateRing();
         UpdateHitZone();
+        // Панель с текстом открыта — строка на панели задач плавно прячется (кольцо остаётся)
+        double textTarget = LyricsFlyout.IsOpen ? 0 : 1;
+        if (Math.Abs(TextArea.Opacity - textTarget) > 0.004) TextArea.Opacity += (textTarget - TextArea.Opacity) * 0.18;
+        else if (TextArea.Opacity != textTarget) TextArea.Opacity = textTarget;
         // Каждый кадр: не оказались ли под панелью задач. Проверка стоит микросекунды, зато если Windows
         // опустила нас (сворачивание окон, Win+D, клик по трею), возвращаемся уже в следующем кадре
         EnsureOnTop();
         if (_titleGlow && _glowOn) UpdateGlow(1);
         if (_lines == null || _snap == null || _track == null) return;
-        if (DateTime.Now < _holdUntil) return;
 
         if (!_snap.HasTimeline)
         {
@@ -274,7 +364,8 @@ public partial class OverlayWindow : Window
         }
 
         var pos = CurrentPosition();
-        if (_dissolving && _shownIndex >= 0 && _shownIndex < _lines.Count && pos < LineEnd(_shownIndex) - TimeSpan.FromMilliseconds(500))
+        if (_dissolving && _shownIndex >= 0 && _shownIndex < _lines.Count && !IsBreak(_lines[_shownIndex].Text)
+            && pos < LineEnd(_shownIndex) - TimeSpan.FromMilliseconds(500))
             _shownIndex = int.MinValue; // перемотали назад — показать строку снова
         // Следующая строка появляется чуть раньше своего времени — чтобы успеть её прочитать
         int i = LrcParser.IndexAt(_lines, pos + TimeSpan.FromMilliseconds(_settings.LineLeadMs));
@@ -289,10 +380,12 @@ public partial class OverlayWindow : Window
                 // Вступление — визуализатор
                 ShowVisualizer(tip);
             }
-            else if (string.IsNullOrWhiteSpace(_lines[i].Text))
+            else if (IsBreak(_lines[i].Text))
             {
-                // Проигрыш
-                ShowVisualizer(tip);
+                // Проигрыш (пустая строка или только ноты «♪»). Пропетая строка ещё на экране — она медленно
+                // тает, как в долгой паузе, а не уходит за 0,3 с. Уже растаяла или тает — не трогаем
+                if (_activeHidden) _singing = false;
+                else if (!(_singing && DissolveNow(i, pos))) ShowVisualizer(tip);
             }
             else
             {
@@ -310,12 +403,48 @@ public partial class OverlayWindow : Window
         }
     }
 
+    /// <summary>Строка-проигрыш: пустая или только из нот («♪», «♫»…).</summary>
+    static bool IsBreak(string text) =>
+        text.All(c => char.IsWhiteSpace(c) || c is '♪' or '♫' or '♬' or '♩' || char.IsSurrogate(c) /* эмодзи нот 🎵🎶 */);
+
+    /// <summary>Время следующей строки со словами после строки i (проигрыши пропускаем).</summary>
+    TimeSpan? NextSung(int i)
+    {
+        for (int k = i + 1; k < _lines!.Count; k++)
+            if (!IsBreak(_lines[k].Text)) return _lines[k].Time;
+        return null;
+    }
+
+    /// <summary>
+    /// Начался проигрыш: пропетая строка медленно растворяется (чем длиннее проигрыш, тем медленнее,
+    /// 0,8–4 с). false — проигрыш слишком короткий, пусть строка уйдёт обычным образом.
+    /// </summary>
+    bool DissolveNow(int i, TimeSpan pos)
+    {
+        var next = (NextSung(i) ?? pos + TimeSpan.FromSeconds(8)) - TimeSpan.FromMilliseconds(_settings.LineLeadMs);
+        var remaining = next - pos;
+        var dur = remaining * DissolveShare;
+        if (dur < DissolveMin) dur = DissolveMin;
+        if (dur > DissolveMax) dur = DissolveMax;
+        if (dur > remaining * 0.9) dur = remaining * 0.9;
+        if (dur <= TimeSpan.FromMilliseconds(300)) return false;
+
+        _dissolving = true;
+        _activeHidden = true;
+        _singing = false;
+        SetFill(_active, 1);
+        HideGlow(dur * 0.7);
+        Animate(_active, show: false, duration: dur, slow: true);
+        return true;
+    }
+
     /// <summary>Строка допета, а до следующей долго — плавно растворяем её, не дожидаясь смены.</summary>
     void TryDissolve(int i, TimeSpan pos)
     {
         if (_dissolving) return;
         var end = LineEnd(i);
-        var next = i + 1 < _lines!.Count ? _lines[i + 1].Time : end + TimeSpan.FromSeconds(6);
+        // Проигрыши («♪», пустые строки) не считаем следующей строкой — пауза длится до следующих слов
+        var next = NextSung(i) ?? end + TimeSpan.FromSeconds(6);
         next -= TimeSpan.FromMilliseconds(_settings.LineLeadMs); // следующая строка появится чуть раньше
         var pause = next - end;
         if (pause < MinPause || pos < end + DissolveDelay) return;
@@ -413,6 +542,7 @@ public partial class OverlayWindow : Window
     {
         if (_update != null)
             tooltip = (string.IsNullOrEmpty(tooltip) ? "" : tooltip + "\n") + "⬆  " + L.F("updateTip", _update.Version);
+        tooltip = (string.IsNullOrEmpty(tooltip) ? "" : tooltip + "\n") + L.S("ringTip");
         Root.ToolTip = string.IsNullOrEmpty(tooltip) ? null : tooltip;
         if (_active.Text != text || _activeHidden) HideGlow(TimeSpan.FromMilliseconds(150));
 
@@ -493,9 +623,7 @@ public partial class OverlayWindow : Window
 
     void PrepareGlow()
     {
-        _glowBrush = new LinearGradientBrush { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
-        for (int k = 0; k < GlowStops + 2; k++)
-            _glowBrush.GradientStops.Add(new GradientStop(Colors.Transparent, k < GlowStops + 1 ? 0 : 1));
+        _glowBrush = NewGlowBrush();
         // Два слоя: плотное свечение у самих букв и широкий мягкий ореол
         GlowLine.Foreground = _glowBrush;
         GlowLine.Effect = new BlurEffect { Radius = 5, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
@@ -509,16 +637,42 @@ public partial class OverlayWindow : Window
     void UpdateGlow(double p)
     {
         if (!_settings.Glow) return;
+        double lvl = GlowLevel;
+        if (GlowFar.Effect is BlurEffect far) far.Radius = 11 + 13 * lvl;
+        if (GlowLine.Effect is BlurEffect near) near.Radius = 4 + 4 * lvl;
+        PaintGlow(_glowBrush, p, lvl);
+    }
+
+    /// <summary>Кисть для свечения (её раскрашивает PaintGlow). Нужна и строке на панели, и панели с текстом.</summary>
+    internal static LinearGradientBrush NewGlowBrush()
+    {
+        var b = new LinearGradientBrush { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
+        for (int k = 0; k < GlowStops + 2; k++)
+            b.GradientStops.Add(new GradientStop(Colors.Transparent, k < GlowStops + 1 ? 0 : 1));
+        return b;
+    }
+
+    /// <summary>Уровень музыки для свечения 0…1: быстрая часть даёт вспышки на ударах, медленная — общий уровень.</summary>
+    internal double GlowLevel
+    {
+        get
+        {
+            double punch = Math.Clamp((_glowFast - _glowSlow) * 2.5, 0, 1);
+            return _settings.Visualizer ? Math.Clamp(0.15 + 0.55 * _glowFast + 0.6 * punch, 0, 1) : 0.6;
+        }
+    }
+
+    /// <summary>Сглаженный уровень музыки 0…1 — им «дышит» кольцо.</summary>
+    internal double MusicLevel => _noteLevel;
+
+    /// <summary>Свечение повторяет заливку (доля p), по нему плывут переливы двух оттенков, яркость дышит от музыки.</summary>
+    internal void PaintGlow(LinearGradientBrush brush, double p, double lvl)
+    {
         const double edge = 0.06;
         double x = Math.Clamp(-edge + p * (1 + edge), 0, 1);
         double t = _clock.Elapsed.TotalSeconds;
-        var stops = _glowBrush.GradientStops;
-        // Быстрая часть даёт вспышки на ударах, медленная — общий уровень
-        double punch = Math.Clamp((_glowFast - _glowSlow) * 2.5, 0, 1);
-        double lvl = _settings.Visualizer ? Math.Clamp(0.15 + 0.55 * _glowFast + 0.6 * punch, 0, 1) : 0.6;
+        var stops = brush.GradientStops;
         double breath = 0.5 + 0.5 * lvl; // дыхание от музыки, как у ноты
-        if (GlowFar.Effect is BlurEffect far) far.Radius = 11 + 13 * lvl;
-        if (GlowLine.Effect is BlurEffect near) near.Radius = 4 + 4 * lvl;
 
         for (int k = 0; k < GlowStops; k++)
         {
@@ -634,9 +788,16 @@ public partial class OverlayWindow : Window
         _ringFade += (1 - _ringFade) * 0.06;
 
         double s = _noteLevel;
-        Ring.Opacity = _ringFade * (0.45 + 0.40 * s);
-        if (Ring.RenderTransform is ScaleTransform rs) rs.ScaleX = rs.ScaleY = 1 + 0.12 * s;
+        // Нажали на кольцо — оно быстро сжимается в залитую «жирную» точку, отпустили — пружинит обратно
+        // Пока открыта панель с текстом, кольцо так и остаётся точкой
+        bool dot = _ringPressed || LyricsFlyout.IsOpen;
+        _ringPress += ((dot ? 1 : 0) - _ringPress) * (dot ? 0.35 : 0.2);
+        if (_ringPress < 0.002) _ringPress = 0;
+        double pr = _ringPress;
+        Ring.Opacity = _ringFade * (0.45 + 0.40 * s + (0.55 - 0.40 * s) * pr);
+        if (Ring.RenderTransform is ScaleTransform rs) rs.ScaleX = rs.ScaleY = (1 + 0.12 * s) * (1 - 0.55 * pr);
         if (Ring.Effect is DropShadowEffect rg) rg.BlurRadius = 4 + 6 * s;
+        if (Math.Abs(_ringFill.Opacity - pr) > 0.002) _ringFill.Opacity = pr;
     }
 
     /// <summary>
@@ -645,7 +806,7 @@ public partial class OverlayWindow : Window
     /// </summary>
     void UpdateHitZone()
     {
-        bool hasText = !_activeHidden && !string.IsNullOrEmpty(_active.Text);
+        bool hasText = !_activeHidden && !string.IsNullOrEmpty(_active.Text) && !LyricsFlyout.IsOpen;
         double w = hasText ? Stage.ActualWidth / 2 : RingColumn.ActualWidth;
         if (w > 0 && Math.Abs(HitZone.Width - w) > 0.5) HitZone.Width = w;
     }
@@ -693,8 +854,8 @@ public partial class OverlayWindow : Window
     // ---------------- Буквы всплывают ----------------
 
     // Параметры: откуда буква выплывает и как быстро идёт волна
-    const double LetterBlur = 12;        // размытие строки, пока буквы всплывают
-    static readonly TimeSpan LetterBlurDuration = TimeSpan.FromMilliseconds(800);
+    internal const double LetterBlur = 12;        // размытие строки, пока буквы всплывают
+    internal static readonly TimeSpan LetterBlurDuration = TimeSpan.FromMilliseconds(560); // и на панели задач, и в панели с текстом
     const double LetterAngle = -16;      // наклон в начале, градусы
     const double LetterDx = -3, LetterDy = 8;
     static readonly TimeSpan LetterDuration = TimeSpan.FromMilliseconds(460);
@@ -704,7 +865,7 @@ public partial class OverlayWindow : Window
     /// Каждая буква новой строки выплывает снизу под углом, проявляется и встаёт на место с лёгкой «пружинкой».
     /// Пока буква летит, у неё свой цвет; когда встала — эффект снимается и работает обычная заливка пропетого.
     /// </summary>
-    void AnimateLetters(TextBlock tb)
+    internal void AnimateLetters(TextBlock tb, Color? letterColor = null)
     {
         var text = tb.Text;
         var effects = new TextEffectCollection();
@@ -715,10 +876,16 @@ public partial class OverlayWindow : Window
         double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         var ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             typeface, tb.FontSize, Brushes.White, null, TextFormattingMode.Display, ppd);
+        // Строка в несколько строчек (панель с текстом) — буквы считаем с тем же переносом и выравниванием
+        if (tb.TextWrapping != TextWrapping.NoWrap && tb.ActualWidth > 0)
+        {
+            ft.MaxTextWidth = tb.ActualWidth;
+            ft.TextAlignment = tb.TextAlignment;
+        }
 
         int visible = text.Count(c => !char.IsWhiteSpace(c) && !char.IsLowSurrogate(c));
         double step = Math.Min(0.035, 0.5 / Math.Max(1, visible)); // вся волна — не дольше ~0,5 с
-        var color = _dim;
+        var color = letterColor ?? _dim;
         int order = 0;
 
         for (int i = 0; i < text.Length; i++)
@@ -771,6 +938,8 @@ public partial class OverlayWindow : Window
         _glowA = baseGlow;
         _glowB = ShiftHue(baseGlow, 45);
         Ring.Stroke = new SolidColorBrush(baseGlow);
+        _ringFill.Color = baseGlow; // заливка для «точки» при нажатии
+        Ring.Fill = _ringFill;
         if (Ring.RenderTransform is not ScaleTransform) Ring.RenderTransform = new ScaleTransform(1, 1);
         if (Ring.Effect is DropShadowEffect ringGlow) ringGlow.Color = baseGlow;
         else Ring.Effect = new DropShadowEffect { ShadowDepth = 0, BlurRadius = 5, Opacity = 0.8, Color = baseGlow, RenderingBias = RenderingBias.Performance };
@@ -1078,12 +1247,21 @@ public partial class OverlayWindow : Window
     {
         base.OnMouseLeftButtonDown(e);
         MenuWindow.CloseOpen();
+        _ringClick = IsOverRing(e);
+        _ringPressed = _ringClick;
+        if (Native.GetCursorPos(out var c)) _clickStartX = c.X;
         if (_settings.Locked) return;
         if (!Native.GetCursorPos(out var p) || !Native.GetWindowRect(_hwnd, out var r)) return;
         _dragStartCursorX = p.X;
         _dragStartWindowX = r.Left;
         _dragging = true;
         CaptureMouse();
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        _ringPressed = false;
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -1103,10 +1281,17 @@ public partial class OverlayWindow : Window
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
-        if (!_dragging) return;
-        _dragging = false;
-        ReleaseMouseCapture();
-        _settings.Save();
+        // Клик по кольцу (без перетаскивания) — открыть или закрыть панель с текстом
+        bool ringClick = _ringClick && (!Native.GetCursorPos(out var p) || Math.Abs(p.X - _clickStartX) < 4);
+        _ringClick = false;
+        _ringPressed = false;
+        if (_dragging)
+        {
+            _dragging = false;
+            ReleaseMouseCapture();
+            _settings.Save();
+        }
+        if (ringClick) ToggleFlyout();
     }
 
     // ---------------- Меню ----------------
@@ -1185,6 +1370,8 @@ public partial class OverlayWindow : Window
         {
             Item("reload", () => OnTrackChanged(force: true)),
             Item("openLrc", OpenLyricsFolder),
+            MenuEntry.Separator,
+            Stepper("flyoutReturn", () => L.F("seconds", _settings.FlyoutReturnSec), () => SetFlyoutReturn(-0.5), () => SetFlyoutReturn(+0.5)),
         };
 
         var updates = new List<MenuEntry>
@@ -1407,6 +1594,12 @@ public partial class OverlayWindow : Window
     {
         _settings.FontSize = Math.Clamp(_settings.FontSize + delta, 10, 26);
         ApplyFont(_settings.FontFamily);
+        _settings.Save();
+    }
+
+    void SetFlyoutReturn(double delta)
+    {
+        _settings.FlyoutReturnSec = Math.Clamp(_settings.FlyoutReturnSec + delta, 1, 6);
         _settings.Save();
     }
 

@@ -17,6 +17,12 @@ internal static class Native
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int X, Y; }
 
+    /// <summary>WM_NCCALCSIZE: [0] новый прямоугольник окна → новая клиентская область; [1], [2] — куда и откуда копировать старую картинку.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NCCALCSIZE_PARAMS { public RECT R0, R1, R2; public IntPtr Pos; }
+    public const int WM_NCCALCSIZE = 0x0083, WVR_VALIDRECTS = 0x0400;
+    [DllImport("user32.dll", EntryPoint = "DefWindowProcW")] public static extern IntPtr DefWindowProc(IntPtr h, int msg, IntPtr w, IntPtr l);
+
     [StructLayout(LayoutKind.Sequential)]
     struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 
@@ -308,6 +314,10 @@ internal static class Native
         if (cornerRadiusPx > 0 && GetWindowRect(h, out var r))
             SetWindowRgn(h, CreateRoundRectRgn(0, 0, r.Width + 1, r.Height + 1, cornerRadiusPx * 2, cornerRadiusPx * 2), true);
     }
+
+    /// <summary>Окно видно только внутри скруглённого прямоугольника (x, y — от левого верхнего угла окна), физ. пиксели.</summary>
+    public static void SetRoundRegion(IntPtr h, int x, int y, int w, int height, int radius) =>
+        SetWindowRgn(h, CreateRoundRectRgn(x, y, x + w + 1, y + height + 1, radius * 2, radius * 2), true);
 
     /// <summary>Тёмный заголовок окна (Windows 10 20H1+ / 11).</summary>
     public static void SetDarkTitleBar(IntPtr h, bool dark)

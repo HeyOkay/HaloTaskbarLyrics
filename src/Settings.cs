@@ -30,10 +30,16 @@ public sealed class Settings
     public double OffsetY { get; set; }
     /// <summary>Насколько раньше показывать следующую строку, мс.</summary>
     public int LineLeadMs { get; set; } = 300;
+    /// <summary>Панель с текстом: через сколько секунд после прокрутки колесом вернуться к текущей строке.</summary>
+    public double FlyoutReturnSec { get; set; } = 2.5;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ThemeMode Theme { get; set; } = ThemeMode.System;
     /// <summary>"en" (default) or "ru".</summary>
-    public string Language { get; set; } = "en";
+    /// <summary>
+    /// "en" или "ru". null — ещё не выбран: при первом запуске берётся по языку Windows
+    /// (русская Windows — русский, любая другая — английский) и запоминается.
+    /// </summary>
+    public string? Language { get; set; }
     /// <summary>Widget position is locked (can't be dragged).</summary>
     public bool Locked { get; set; } = true;
     /// <summary>Right edge of the widget sticks to the system tray and follows it when icons appear or disappear.</summary>

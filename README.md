@@ -4,6 +4,10 @@
 
 ![HaloTaskbarLyrics in action](docs/preview.gif)
 
+![The lyrics panel — click the ring](docs/panel.gif)
+
+<sub>The track, lyrics and cover in the panel preview are original demo material made for this README.</sub>
+
 Synced lyrics of the song that's playing right now — as a single line on the Windows taskbar,
 next to a small ring that breathes with the music.
 
@@ -20,6 +24,10 @@ next to a small ring that breathes with the music.
   fullscreen games and videos.
 - Sung words fill in as the song plays, letters float in, a soft glow in your Windows accent color, light and dark
   taskbar support, any system font or your own `.ttf`/`.otf`.
+- **Lyrics panel:** click the ring to open the whole song above the taskbar — the current line
+  in the middle with the same fill and glow, lines you can click to jump there, the album cover
+  (click it to see it full size), a seek bar and player buttons (play/pause, previous/next, and
+  shuffle/repeat when the player supports them).
 - English and Russian interface.
 
 ## Download
@@ -40,6 +48,8 @@ unknown publisher. Click **More info → Run anyway**. You can compare the file 
 
 ## Use
 
+- **Click** the ring to open or close the lyrics panel. Scroll the lyrics with the mouse wheel;
+  after a few seconds they return to the current line.
 - **Right-click** the ring (or the right half of the lyrics line) for the menu: font and size,
   effects, position, sync offset for the current track, theme, language, start with Windows.
 - **Lyrics are late or early?** *Sync → Lyrics are late / early* — the offset is remembered per
@@ -73,11 +83,15 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) when a `v
 
 ## Credits
 
-Lyrics by [LRCLIB](https://lrclib.net). Audio capture by [NAudio](https://github.com/naudio/NAudio).
+Lyrics by [LRCLIB](https://lrclib.net). Album covers (when the player doesn't provide one) by [Deezer](https://www.deezer.com). Audio capture by [NAudio](https://github.com/naudio/NAudio).
 See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 Built with help from [Claude](https://claude.ai) by Anthropic.
 
 ## License
 
-[MIT](LICENSE)
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal and other noncommercial use: download, use, study and change it.
+**Commercial use (including in commercial products or services) is allowed only with the author's permission.**
+To ask for permission, write to a.meynert1@gmail.com or Telegram [@overzu](https://t.me/overzu).
+
+Version 0.1.0 was released under the MIT license; that release stays under MIT.

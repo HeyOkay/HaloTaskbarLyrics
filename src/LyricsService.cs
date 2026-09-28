@@ -118,7 +118,8 @@ public sealed class LyricsService
         {
             if (!HasContent(it)) continue;
 
-            double diff = knownDuration ? Math.Abs(it.Duration - duration) : 0;
+            // Длительность записи неизвестна — не отбрасываем (кроме строгого поиска), но ставим после точных совпадений
+            double diff = !knownDuration ? 0 : it.Duration is double d && d > 0 ? Math.Abs(d - duration) : (strict ? double.MaxValue : 10);
             if (knownDuration && diff > (strict ? 3 : 15)) continue; // скорее всего другая версия/песня
 
             if (want is { Length: > 0 })
@@ -169,7 +170,8 @@ public sealed class LyricsService
         public string? TrackName { get; set; }
         public string? ArtistName { get; set; }
         public string? AlbumName { get; set; }
-        public double Duration { get; set; }
+        /// <summary>У некоторых записей LRCLIB длительность пустая (null) — раньше из-за одной такой весь поиск падал.</summary>
+        public double? Duration { get; set; }
         public bool Instrumental { get; set; }
         public string? PlainLyrics { get; set; }
         public string? SyncedLyrics { get; set; }

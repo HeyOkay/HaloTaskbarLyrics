@@ -68,6 +68,23 @@ public static class L
         ["diagnostics"] = ("Diagnostics", "Диагностика"),
         ["diagLog"] = ("Write diagnostic log", "Записывать журнал диагностики"),
         ["diagOpen"] = ("Show the log file", "Показать файл журнала"),
+        ["flyoutReturn"] = ("Panel: back to the current line in", "Панель: к текущей строке через"),
+        ["seconds"] = ("{0:0.#} s", "{0:0.#} с"),
+
+        // Lyrics panel (click on the ring)
+        ["flyoutNothing"] = ("Nothing is playing", "Сейчас ничего не играет"),
+        ["share"] = ("Share (copy a link to the track)", "Поделиться (скопировать ссылку на трек)"),
+        ["linkCopied"] = ("Link to the track copied", "Ссылка на трек скопирована"),
+        ["copyFailed"] = ("Couldn't copy — the clipboard is busy", "Не удалось скопировать — буфер обмена занят"),
+        ["shuffle"] = ("Shuffle", "Перемешать"),
+        ["previous"] = ("Previous", "Предыдущий трек"),
+        ["next"] = ("Next", "Следующий трек"),
+        ["play"] = ("Play", "Играть"),
+        ["pause"] = ("Pause", "Пауза"),
+        ["repeatOff"] = ("Repeat: off", "Повтор: выключен"),
+        ["repeatAll"] = ("Repeat: all", "Повтор: все треки"),
+        ["repeatOne"] = ("Repeat: this track", "Повтор: этот трек"),
+        ["ringTip"] = ("Click the ring to open the lyrics panel", "Клик по кольцу — панель с текстом"),
 
         // Statuses (tooltips)
         ["waiting"] = ("HaloTaskbarLyrics — waiting for music", "HaloTaskbarLyrics — жду музыку"),
