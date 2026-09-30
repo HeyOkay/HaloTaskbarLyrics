@@ -68,6 +68,10 @@ public partial class OverlayWindow : Window
     int _fullscreenHits;        // сколько проверок подряд поверх панели полноэкранное окно
     Native.WinEventProc? _winEvent; // держим ссылку, иначе сборщик мусора удалит обработчик
     IntPtr _winEventHook;
+    StartButton? _start;        // своя кнопка «Пуск» (если включена в меню)
+    StartButton? _startCover;   // её копия «поверх всех», пока активна панель задач или открыт «Пуск»
+    Color _ringColor = Colors.White;
+    bool _lightBar;
 
     bool _titleGlow;            // текст не найден — свечение на весь заголовок
     bool _glowOn;               // свечение пропетого текста сейчас видно (тоже «дышит» от музыки)
@@ -129,6 +133,7 @@ public partial class OverlayWindow : Window
         SourceInitialized += (_, _) =>
         {
             _hwnd = new WindowInteropHelper(this).Handle;
+            Native.OwnChildren.Add(_hwnd);
             Native.MakeToolWindow(_hwnd); // не в Alt+Tab и не забирает фокус
             HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
             Attach();
@@ -149,12 +154,16 @@ public partial class OverlayWindow : Window
             _trayTimer.Start();
             if (Updater.Configured && _settings.AutoUpdate) _updateTimer.Start();
             CompositionTarget.Rendering += OnRender; // ~60 кадров/с для плавной заливки
+            UpdateStartButton();
             await PollAsync();
         };
         Closed += (_, _) =>
         {
             CompositionTarget.Rendering -= OnRender;
             LyricsFlyout.CloseOpen();
+            _start?.Close();
+            _startCover?.Close();
+            Native.OwnChildren.Remove(_hwnd);
             _slow.Stop();
             _trayTimer.Stop();
             _updateTimer.Stop();
@@ -165,7 +174,7 @@ public partial class OverlayWindow : Window
             App.RecreateOverlay();
         };
 
-        _slow.Tick += async (_, _) => { KeepOnTaskbar(); await PollAsync(); };
+        _slow.Tick += async (_, _) => { KeepOnTaskbar(); UpdateStartButton(); await PollAsync(); };
         // Трей проверяем чаще: когда появляется новый значок, виджет должен уступить место сразу
         _trayTimer.Tick += (_, _) => RefreshTray();
         _updateTimer.Tick += async (_, _) =>
@@ -223,7 +232,10 @@ public partial class OverlayWindow : Window
 
     void ToggleFlyout()
     {
+        HideTip();
         if (LyricsFlyout.IsOpen) LyricsFlyout.CloseOpen();
+        // Ничего не играет (нет ни одного плеера с треком) — панель не открываем: показывать в ней нечего
+        else if (_track == null) Diag.Write("Flyout: not opened, no media source");
         else if (!LyricsFlyout.JustClosed) LyricsFlyout.Open(this); // только что закрылась этим же кликом — не открываем снова
     }
 
@@ -538,12 +550,56 @@ public partial class OverlayWindow : Window
         b.GradientStops[2].Offset = Math.Clamp(x + edge, 0, 1);
     }
 
+    // ---------------- Всплывающая подсказка ----------------
+
+    // Стандартная системная подсказка Windows (NativeTip): одна строка «Исполнитель — Название»,
+    // по центру над курсором, над панелью задач, с акрилом. Нет трека — нет подсказки
+    NativeTip? _tipWin;
+    string? _tipText;
+    DispatcherTimer? _tipTimer;
+    const double TipGap = 13;   // DIP между подсказкой и верхним краем панели задач (как у системных)
+    const int TipDelayMs = 600;
+
+    void SetTrackTip()
+    {
+        var t = _track;
+        _tipText = t == null ? null : string.IsNullOrWhiteSpace(t.Artist) ? t.Title : $"{t.Artist} — {t.Title}";
+        if (string.IsNullOrWhiteSpace(_tipText)) HideTip();
+        else if (_tipWin is { IsShown: true }) ShowTip(); // трек сменился, пока подсказка видна
+    }
+
+    void StartTipTimer()
+    {
+        if (_tipTimer == null)
+        {
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(TipDelayMs) };
+            timer.Tick += (_, _) => { timer.Stop(); ShowTip(); };
+            _tipTimer = timer;
+        }
+        _tipTimer.Stop();
+        _tipTimer.Start();
+    }
+
+    void ShowTip()
+    {
+        if (string.IsNullOrWhiteSpace(_tipText) || LyricsFlyout.IsOpen || _dragging || !IsMouseOver) { HideTip(); return; }
+        if (!Native.GetCursorPos(out var c) || Native.GetTaskbarRect() is not { } bar) return;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        int bottom = bar.Top - (int)Math.Round(TipGap * dpi.DpiScaleY);
+        // По центру над курсором (по горизонтали), по вертикали — всегда на одной высоте над панелью задач
+        _tipWin ??= new NativeTip(_hwnd);
+        _tipWin.Show(_tipText, c.X, bottom, bar.Left, bar.Right);
+    }
+
+    void HideTip()
+    {
+        _tipTimer?.Stop();
+        _tipWin?.Hide();
+    }
+
     void Transition(string text, double fill, string? tooltip)
     {
-        if (_update != null)
-            tooltip = (string.IsNullOrEmpty(tooltip) ? "" : tooltip + "\n") + "⬆  " + L.F("updateTip", _update.Version);
-        tooltip = (string.IsNullOrEmpty(tooltip) ? "" : tooltip + "\n") + L.S("ringTip");
-        Root.ToolTip = string.IsNullOrEmpty(tooltip) ? null : tooltip;
+        SetTrackTip();
         if (_active.Text != text || _activeHidden) HideGlow(TimeSpan.FromMilliseconds(150));
 
         if (_active.Text == text && !_activeHidden)
@@ -596,7 +652,7 @@ public partial class OverlayWindow : Window
         double blurTo = slow ? DissolveBlur : BlurMax;
         double travel = slow ? Travel * 0.4 : Travel;
         double scaleTo = slow ? 0.97 : ScaleFrom;
-        double blurIn = letters ? LetterBlur : BlurMax, travelIn = letters ? 0 : Travel, scaleIn = letters ? 1 : ScaleFrom;
+        double blurIn = letters ? LetterBlurNow : BlurMax, travelIn = letters ? 0 : Travel, scaleIn = letters ? 1 : ScaleFrom;
 
         DoubleAnimation A(double? from, double to) => new(to, dur) { From = from, EasingFunction = ease };
 
@@ -798,6 +854,59 @@ public partial class OverlayWindow : Window
         if (Ring.RenderTransform is ScaleTransform rs) rs.ScaleX = rs.ScaleY = (1 + 0.12 * s) * (1 - 0.55 * pr);
         if (Ring.Effect is DropShadowEffect rg) rg.BlurRadius = 4 + 6 * s;
         if (Math.Abs(_ringFill.Opacity - pr) > 0.002) _ringFill.Opacity = pr;
+        _start?.Animate(s); // своя кнопка «Пуск» дышит вместе с кольцом
+        UpdateStartCover(s);
+    }
+
+    /// <summary>
+    /// Пока активна панель задач или открыт «Пуск», над встроенной кнопкой «Пуск» стоит её копия
+    /// «поверх всех» (иначе мелькала старая кнопка, см. StartButton._cover). В остальное время копия спрятана.
+    /// </summary>
+    void UpdateStartCover(double s)
+    {
+        var rect = _start?.VisibleRect;
+        bool want = rect != null && Native.IsTaskbarActive();
+        if (want && _startCover == null)
+        {
+            var c = new StartButton(cover: true);
+            c.Closed += (_, _) => { if (_startCover == c) _startCover = null; };
+            c.ApplyTheme(_ringColor, _lightBar);
+            _startCover = c;
+            c.Show();
+        }
+        if (_startCover is not { } cover) return;
+        if (want && _start is { } sb) cover.Follow(rect, sb.PlateColor, sb.PlateShown);
+        else cover.Follow(null, default, false);
+        cover.Animate(s);
+    }
+
+    /// <summary>Своя кнопка «Пуск»: создаём или убираем по настройке. Только когда виджет встроен в панель.</summary>
+    void UpdateStartButton()
+    {
+        bool want = _settings.StartButton && _embedded && !App.Exiting;
+        if (want && _start == null)
+        {
+            var sb = new StartButton();
+            sb.Closed += (_, _) => { if (_start == sb) _start = null; };
+            sb.ApplyTheme(_ringColor, _lightBar);
+            _start = sb;
+            sb.Show();
+        }
+        else if (!want && _start != null)
+        {
+            var sb = _start;
+            _start = null;
+            sb.Close();
+            _startCover?.Close();
+            _startCover = null;
+        }
+    }
+
+    void ToggleStartButton()
+    {
+        _settings.StartButton = !_settings.StartButton;
+        _settings.Save();
+        UpdateStartButton();
     }
 
     /// <summary>
@@ -853,6 +962,16 @@ public partial class OverlayWindow : Window
 
     // ---------------- Буквы всплывают ----------------
 
+    void SetLetters(bool on, string? style)
+    {
+        _settings.LetterFx = on;
+        if (style != null) _settings.LetterStyle = style;
+        _settings.Save();
+    }
+
+    /// <summary>Размытие строки, пока буквы появляются — одинаковое для всех стилей (как у «всплывают под углом»).</summary>
+    internal double LetterBlurNow => LetterBlur;
+
     // Параметры: откуда буква выплывает и как быстро идёт волна
     internal const double LetterBlur = 12;        // размытие строки, пока буквы всплывают
     internal static readonly TimeSpan LetterBlurDuration = TimeSpan.FromMilliseconds(560); // и на панели задач, и в панели с текстом
@@ -860,6 +979,13 @@ public partial class OverlayWindow : Window
     const double LetterDx = -3, LetterDy = 8;
     static readonly TimeSpan LetterDuration = TimeSpan.FromMilliseconds(460);
     static readonly TimeSpan LetterFade = TimeSpan.FromMilliseconds(280);
+
+    // «Поднимаются волной»: без наклона, прямо снизу вверх, буквы летят внахлёст, с лёгкой пружинкой
+    const double RiseDy = 0.6;           // откуда поднимается буква — доля размера шрифта
+    const double RiseStep = 0.045;       // пауза между соседними буквами, с
+    const double RiseWave = 0.7;         // вся волна — не дольше, с
+    static readonly TimeSpan RiseDuration = TimeSpan.FromMilliseconds(420);
+    static readonly TimeSpan RiseFade = TimeSpan.FromMilliseconds(220);
 
     /// <summary>
     /// Каждая буква новой строки выплывает снизу под углом, проявляется и встаёт на место с лёгкой «пружинкой».
@@ -871,15 +997,22 @@ public partial class OverlayWindow : Window
         var effects = new TextEffectCollection();
         tb.TextEffects = effects;
         if (string.IsNullOrEmpty(text)) return;
+        if (_settings.LetterStyle == "rise") { RiseLetters(tb, text, effects, letterColor ?? _dim); return; }
 
         var typeface = new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
-        double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        double ppd = VisualTreeHelper.GetDpi(tb).PixelsPerDip; // DPI того окна, где строка (панель может быть на другом мониторе)
         var ft = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            typeface, tb.FontSize, Brushes.White, null, TextFormattingMode.Display, ppd);
+            typeface, tb.FontSize, Brushes.White, null, TextFormattingMode.Ideal, ppd);
         // Строка в несколько строчек (панель с текстом) — буквы считаем с тем же переносом и выравниванием
         if (tb.TextWrapping != TextWrapping.NoWrap && tb.ActualWidth > 0)
         {
-            ft.MaxTextWidth = tb.ActualWidth;
+            // ActualWidth — ширина самой длинной строчки, округлённая до пикселя (UseLayoutRounding) и порой
+            // на долю пикселя меньше настоящей. Тогда здесь последнее слово этой строчки переносилось вниз,
+            // центр поворота его букв оказывался не там — и они выплывали с другой стороны.
+            // Запас в 1 px переноса не меняет: следующее слово всё равно не влезет (пробел + буква шире)
+            double wrap = tb.ActualWidth + 1;
+            if (!double.IsInfinity(tb.MaxWidth)) wrap = Math.Min(wrap, tb.MaxWidth);
+            ft.MaxTextWidth = wrap;
             ft.TextAlignment = tb.TextAlignment;
         }
 
@@ -918,6 +1051,39 @@ public partial class OverlayWindow : Window
         }
     }
 
+    /// <summary>
+    /// Буквы строки поднимаются снизу волной, слева направо: каждая проявляется и встаёт на место с лёгкой пружинкой.
+    /// Положение букв не нужно — сдвиг одинаковый для всех, поэтому перенос строк тут ни на что не влияет.
+    /// </summary>
+    void RiseLetters(TextBlock tb, string text, TextEffectCollection effects, Color color)
+    {
+        int visible = text.Count(c => !char.IsWhiteSpace(c) && !char.IsLowSurrogate(c));
+        double step = Math.Min(RiseStep, RiseWave / Math.Max(1, visible));
+        double dy = Math.Max(6, tb.FontSize * RiseDy);
+        int order = 0;
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (char.IsWhiteSpace(text[i]) || char.IsLowSurrogate(text[i])) continue;
+            int count = char.IsHighSurrogate(text[i]) && i + 1 < text.Length ? 2 : 1;
+
+            var move = new TranslateTransform(0, dy);
+            var brush = new SolidColorBrush(Color.FromArgb(0, color.R, color.G, color.B));
+            var fx = new TextEffect { PositionStart = i, PositionCount = count, Transform = move, Foreground = brush };
+            effects.Add(fx);
+
+            var begin = TimeSpan.FromSeconds(0.04 + order++ * step);
+            var up = new DoubleAnimation(0, RiseDuration)
+            {
+                BeginTime = begin,
+                EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.25 },
+            };
+            up.Completed += (_, _) => effects.Remove(fx); // буква на месте — дальше обычная заливка
+            move.BeginAnimation(TranslateTransform.YProperty, up);
+            brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(color, RiseFade) { BeginTime = begin });
+        }
+    }
+
     DropShadowEffect Glow() =>
         new() { BlurRadius = 8, ShadowDepth = 0, Opacity = 0.55, Color = _glow, RenderingBias = RenderingBias.Performance };
 
@@ -938,6 +1104,10 @@ public partial class OverlayWindow : Window
         _glowA = baseGlow;
         _glowB = ShiftHue(baseGlow, 45);
         Ring.Stroke = new SolidColorBrush(baseGlow);
+        _ringColor = baseGlow;
+        _lightBar = light;
+        _start?.ApplyTheme(baseGlow, light);
+        _startCover?.ApplyTheme(baseGlow, light);
         _ringFill.Color = baseGlow; // заливка для «точки» при нажатии
         Ring.Fill = _ringFill;
         if (Ring.RenderTransform is not ScaleTransform) Ring.RenderTransform = new ScaleTransform(1, 1);
@@ -975,7 +1145,7 @@ public partial class OverlayWindow : Window
         while (size > min)
         {
             var ft = new FormattedText(tb.Text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                typeface, size, Brushes.White, null, TextFormattingMode.Display, ppd);
+                typeface, size, Brushes.White, null, TextFormattingMode.Ideal, ppd);
             if (ft.WidthIncludingTrailingWhitespace <= avail) break;
             size -= 0.5;
         }
@@ -1001,7 +1171,7 @@ public partial class OverlayWindow : Window
         var typeface = new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
         double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         FormattedText Measure(string ch) => new(ch, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            typeface, tb.FontSize, Brushes.White, null, TextFormattingMode.Display, ppd);
+            typeface, tb.FontSize, Brushes.White, null, TextFormattingMode.Ideal, ppd);
 
         var fx = Measure("x");
         var fh = Measure("H");
@@ -1246,6 +1416,7 @@ public partial class OverlayWindow : Window
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
+        HideTip();
         MenuWindow.CloseOpen();
         _ringClick = IsOverRing(e);
         _ringPressed = _ringClick;
@@ -1258,10 +1429,17 @@ public partial class OverlayWindow : Window
         CaptureMouse();
     }
 
+    protected override void OnMouseEnter(MouseEventArgs e)
+    {
+        base.OnMouseEnter(e);
+        StartTipTimer();
+    }
+
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
         _ringPressed = false;
+        HideTip();
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -1300,6 +1478,7 @@ public partial class OverlayWindow : Window
     {
         base.OnMouseRightButtonUp(e);
         e.Handled = true;
+        HideTip();
         MenuWindow.ShowAtCursor(BuildMenu());
     }
 
@@ -1337,10 +1516,15 @@ public partial class OverlayWindow : Window
             Stepper("fontSize", () => _settings.FontSize.ToString("0", L.Culture), () => SetFont(-1), () => SetFont(+1)),
             MenuEntry.Separator,
             Label("effects"),
-            Item("letterFx", () => { _settings.LetterFx = !_settings.LetterFx; _settings.Save(); }, _settings.LetterFx),
             Item("glow", ToggleGlow, _settings.Glow),
             Item("accentSung", () => { _settings.AccentSung = !_settings.AccentSung; _settings.Save(); ApplyTheme(); }, _settings.AccentSung),
             Item("visualizer", ToggleVisualizer, _settings.Visualizer),
+            MenuEntry.Separator,
+            // Один выбор на всё приложение: и виджет, и панель с текстом берут его из AnimateLetters
+            Label("letterIn"),
+            Item("letterOff", () => SetLetters(false, null), !_settings.LetterFx),
+            Item("letterFloat", () => SetLetters(true, "float"), _settings.LetterFx && _settings.LetterStyle != "rise"),
+            Item("letterRise", () => SetLetters(true, "rise"), _settings.LetterFx && _settings.LetterStyle == "rise"),
         };
 
         var place = new List<MenuEntry>
@@ -1404,6 +1588,7 @@ public partial class OverlayWindow : Window
             new() { Header = L.S("diagnostics"), Children = diagnostics },
             new() { Header = L.S("updates"), Children = updates },
             MenuEntry.Separator,
+            Item("startButton", ToggleStartButton, _settings.StartButton),
             Item("autostart", () => Autostart.Set(!Autostart.IsEnabled), Autostart.IsEnabled),
             MenuEntry.Separator,
             Item("exit", App.Quit),

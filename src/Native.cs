@@ -109,8 +109,23 @@ internal static class Native
         SetWindowLong(h, GWL_STYLE, (style & ~WS_CHILD) | WS_POPUP);
     }
 
-    /// <summary>Мы — верхнее из дочерних окон панели (над её собственным содержимым).</summary>
-    public static bool IsTopChild(IntPtr parent, IntPtr h) => GetWindow(parent, GW_CHILD) == h;
+    /// <summary>Наши окна внутри панели задач (виджет, кнопка «Пуск»): они не мешают друг другу быть «сверху».</summary>
+    public static readonly HashSet<IntPtr> OwnChildren = new();
+
+    /// <summary>
+    /// Мы выше собственного содержимого панели: над нами только наши же окна (иначе виджет и кнопка «Пуск»
+    /// каждый кадр поднимали бы друг друга по очереди).
+    /// </summary>
+    public static bool IsTopChild(IntPtr parent, IntPtr h)
+    {
+        for (var c = GetWindow(parent, GW_CHILD); c != IntPtr.Zero; c = GetWindow(c, GW_HWNDNEXT))
+        {
+            if (c == h) return true;
+            if (!OwnChildren.Contains(c)) return false;
+        }
+        return false;
+    }
+    const uint GW_HWNDNEXT = 2;
 
     public static void RaiseChild(IntPtr h) =>
         SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -198,6 +213,36 @@ internal static class Native
     [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr hmod, WinEventProc proc, uint pid, uint tid, uint flags);
     [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
     public const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_SYSTEM_MINIMIZEEND = 0x0017, WINEVENT_OUTOFCONTEXT = 0;
+    public const uint EVENT_OBJECT_REORDER = 0x8004;
+
+    /// <summary>
+    /// Активна сама панель задач или открыт «Пуск». В это время Проводник постоянно кладёт содержимое
+    /// панели поверх встроенных в неё окон — кнопку «Пуск» тогда дублирует окно «поверх всех».
+    /// </summary>
+    public static bool IsTaskbarActive()
+    {
+        var fg = GetForegroundWindow();
+        return fg != IntPtr.Zero && (fg == Taskbar() || IsStartMenuForeground());
+    }
+
+    /// <summary>Класс окна (для журнала).</summary>
+    public static string ClassOf(IntPtr h)
+    {
+        var sb = new StringBuilder(128);
+        GetClassName(h, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    /// <summary>Первое чужое окно над нашим внутри того же родителя (для журнала).</summary>
+    public static IntPtr ForeignAbove(IntPtr parent, IntPtr h)
+    {
+        for (var c = GetWindow(parent, GW_CHILD); c != IntPtr.Zero && c != h; c = GetWindow(c, GW_HWNDNEXT))
+            if (!OwnChildren.Contains(c)) return c;
+        return IntPtr.Zero;
+    }
+
+    /// <summary>Процесс, которому принадлежит окно.</summary>
+    public static uint ProcessOf(IntPtr h) { GetWindowThreadProcessId(h, out var pid); return pid; }
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hWnd, StringBuilder sb, int max);
@@ -244,6 +289,91 @@ internal static class Native
         var h = FindWindowEx(taskbar, IntPtr.Zero, "TrayNotifyWnd", null);
         if (h == IntPtr.Zero || !IsWindowVisible(h) || !GetWindowRect(h, out var r) || r.Width <= 0) return null;
         return r.Left;
+    }
+
+    /// <summary>Кнопка «Пуск» Windows 10 — окно "Start" внутри панели задач, физ. пиксели.</summary>
+    public static RECT? GetStartWindowRect(IntPtr taskbar)
+    {
+        var h = FindWindowEx(taskbar, IntPtr.Zero, "Start", null);
+        if (h == IntPtr.Zero || !IsWindowVisible(h) || !GetWindowRect(h, out var r) || r.Width <= 0) return null;
+        return r;
+    }
+
+    // ---- Меню «Пуск» открыто? (окно StartMenuExperienceHost на переднем плане). Результат запоминаем по окну,
+    // поэтому проверка каждый кадр стоит микросекунды ----
+    static IntPtr _fgChecked;
+    static bool _fgIsStart;
+
+    public static bool IsStartMenuForeground()
+    {
+        var fg = GetForegroundWindow();
+        if (fg == _fgChecked) return _fgIsStart;
+        _fgChecked = fg;
+        _fgIsStart = false;
+        if (fg == IntPtr.Zero) return false;
+        var sb = new StringBuilder(64);
+        GetClassName(fg, sb, sb.Capacity);
+        if (sb.ToString() != "Windows.UI.Core.CoreWindow") return false;
+        GetWindowThreadProcessId(fg, out var pid);
+        try
+        {
+            var name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName;
+            // Windows 11 24H2+ (сборки 26xxx): меню «Пуск» живёт в SearchHost вместе с поиском
+            _fgIsStart = name.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase)
+                      || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase)
+                      || name.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { }
+        return _fgIsStart;
+    }
+
+    // ---- Нажатие клавиш (Win — меню «Пуск», Win+X — системное меню) ----
+    [StructLayout(LayoutKind.Sequential)]
+    struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Explicit)]
+    struct InputUnion { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct INPUT { public uint type; public InputUnion u; }
+    [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, INPUT[] inputs, int size);
+    const uint INPUT_KEYBOARD = 1, KEYEVENTF_EXTENDEDKEY = 0x0001, KEYEVENTF_KEYUP = 0x0002;
+    public const ushort VK_LWIN = 0x5B, VK_X = 0x58;
+
+    /// <summary>Нажимает клавиши по порядку и отпускает в обратном (например, Win+X).</summary>
+    public static void PressKeys(params ushort[] keys)
+    {
+        var list = new List<INPUT>();
+        static uint Ext(ushort vk) => vk == VK_LWIN ? KEYEVENTF_EXTENDEDKEY : 0;
+        foreach (var k in keys)
+            list.Add(new INPUT { type = INPUT_KEYBOARD, u = new InputUnion { ki = new KEYBDINPUT { wVk = k, dwFlags = Ext(k) } } });
+        for (int i = keys.Length - 1; i >= 0; i--)
+            list.Add(new INPUT { type = INPUT_KEYBOARD, u = new InputUnion { ki = new KEYBDINPUT { wVk = keys[i], dwFlags = Ext(keys[i]) | KEYEVENTF_KEYUP } } });
+        SendInput((uint)list.Count, list.ToArray(), Marshal.SizeOf<INPUT>());
+    }
+
+    // ---- Цвет пикселей на экране (для подложки, закрывающей настоящий значок) ----
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+    [DllImport("gdi32.dll")] static extern uint GetPixel(IntPtr dc, int x, int y);
+
+    /// <summary>Средний цвет нескольких точек экрана (физ. пиксели), null — не удалось.</summary>
+    public static Color? SampleScreen(IEnumerable<(int X, int Y)> points)
+    {
+        var dc = GetDC(IntPtr.Zero);
+        if (dc == IntPtr.Zero) return null;
+        try
+        {
+            int r = 0, g = 0, b = 0, n = 0;
+            foreach (var (x, y) in points)
+            {
+                uint c = GetPixel(dc, x, y);
+                if (c == 0xFFFFFFFF) continue; // CLR_INVALID
+                r += (int)(c & 0xFF); g += (int)((c >> 8) & 0xFF); b += (int)((c >> 16) & 0xFF); n++;
+            }
+            return n == 0 ? null : Color.FromRgb((byte)(r / n), (byte)(g / n), (byte)(b / n));
+        }
+        finally { ReleaseDC(IntPtr.Zero, dc); }
     }
 
     /// <summary>Прямоугольник основной панели задач в физических пикселях.</summary>

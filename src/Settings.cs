@@ -14,7 +14,7 @@ public sealed class Settings
     public double Width { get; set; } = 420;
     public double FontSize { get; set; } = 15;
     /// <summary>Шрифт: null — по умолчанию, "user:Имя" — добавленный пользователем, иначе системный.</summary>
-    public string? FontFamily { get; set; } = "Ink Free"; // есть в Windows 10/11; если нет — запасной шрифт
+    public string? FontFamily { get; set; } // null — шрифт по умолчанию (Segoe UI Variable Display)
     public bool Bold { get; set; } = true;
     /// <summary>Shimmering glow under the sung part of the line.</summary>
     public bool Glow { get; set; } = true;
@@ -22,8 +22,15 @@ public sealed class Settings
     public bool AccentSung { get; set; } = true;
     /// <summary>Letters of a new line float in one by one at an angle.</summary>
     public bool LetterFx { get; set; } = true;
+    /// <summary>
+    /// Как появляются буквы (и на панели задач, и в панели с текстом): "float" — выплывают снизу под углом,
+    /// "rise" — поднимаются прямо волной (с лёгкой пружинкой). Любое другое значение — как "float".
+    /// </summary>
+    public string LetterStyle { get; set; } = "float";
     /// <summary>The ring visualizer and the glow breathe with the music (loopback audio capture).</summary>
     public bool Visualizer { get; set; } = true;
+    /// <summary>Своя кнопка «Пуск» (квадрат из четырёх клеток в стиле кольца) поверх настоящей.</summary>
+    public bool StartButton { get; set; }
     /// <summary>Text alignment: "left", "center" or "right".</summary>
     public string Align { get; set; } = "right";
     /// <summary>Vertical shift of the text inside the taskbar, DIP (negative — up).</summary>

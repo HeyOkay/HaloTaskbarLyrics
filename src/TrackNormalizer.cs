@@ -13,7 +13,11 @@ public static class TrackNormalizer
     /// <param name="BareTitle">без "feat. …"</param>
     /// <param name="BaseTitle">без пометок версии: (Remix), (Live), (Acoustic)…</param>
     /// <param name="MainArtist">первый из исполнителей</param>
-    public sealed record Normalized(string Artist, string Title, string BareTitle, string BaseTitle, string MainArtist);
+    public sealed record Normalized(string Artist, string Title, string BareTitle, string BaseTitle, string MainArtist)
+    {
+        /// <summary>Словесные варианты названия из одних символов: "∞" → "Бесконечность", "Infinity".</summary>
+        public IReadOnlyList<string> Aliases { get; init; } = [];
+    }
 
     /// <param name="Free">свободный поиск (q=) вместо поиска по полям</param>
     /// <param name="MatchTitle">для свободного поиска: название найденного трека должно совпадать</param>
@@ -37,6 +41,29 @@ public static class TrackNormalizer
     static readonly Regex Feat = new(@"\s*[\(\[]?\s*\b(feat\.?|ft\.?|featuring)\s+[^\)\]]*[\)\]]?", Opt);
     static readonly Regex ArtistSplit = new(@"\s*(,|&|\bx\b|\band\b|\bfeat\.?|\bft\.?|\bи\b)\s*", Opt);
     static readonly string[] Dashes = [" - ", " – ", " — "];
+
+    /// <summary>
+    /// Названия из одного символа: LRCLIB выбрасывает такие символы из запроса и ищет «только исполнителя»,
+    /// а Squash превращает их в пустую строку. Поэтому ищем по словам.
+    /// </summary>
+    static readonly Dictionary<string, string[]> SymbolTitles = new()
+    {
+        ["∞"] = ["Бесконечность", "Infinity"],
+        ["♾"] = ["Бесконечность", "Infinity"],
+        ["♥"] = ["Любовь", "Love"],
+        ["❤"] = ["Любовь", "Love"],
+        ["☆"] = ["Звезда", "Star"],
+        ["★"] = ["Звезда", "Star"],
+    };
+
+    static string[] AliasesFor(string title)
+    {
+        var key = title.Replace("\uFE0F", "").Trim(); // вариационный селектор эмодзи: "♾️" → "♾"
+        return SymbolTitles.TryGetValue(key, out var a) ? a : [];
+    }
+
+    /// <summary>В названии нет ни одной буквы или цифры — искать по нему бессмысленно.</summary>
+    static bool IsSymbolOnly(string s) => s.Length > 0 && Squash(s).Length == 0;
 
     public static Normalized Clean(string artist, string title)
     {
@@ -71,12 +98,28 @@ public static class TrackNormalizer
 
         var main = ArtistSplit.Split(artist).FirstOrDefault(s => s.Trim().Length > 0)?.Trim() ?? artist;
 
-        return new Normalized(artist, title, bare, baseTitle, main);
+        return new Normalized(artist, title, bare, baseTitle, main) { Aliases = AliasesFor(baseTitle) };
     }
 
     /// <summary>Варианты запросов от самого точного к самому свободному.</summary>
     public static IEnumerable<Variant> Variants(Normalized n)
     {
+        // Название из символов ("∞"): сначала ищем по словам и требуем совпадения названия,
+        // иначе LRCLIB вернёт любые песни исполнителя, и подберётся чужой текст по длительности.
+        foreach (var alias in n.Aliases)
+        {
+            if (n.Artist.Length > 0)
+            {
+                yield return new(n.Artist, alias, false, alias, false);
+                if (n.MainArtist != n.Artist) yield return new(n.MainArtist, alias, false, alias, false);
+                yield return new("", $"{n.MainArtist} {alias}", true, alias, false);
+            }
+            yield return new("", alias, true, alias, true);
+        }
+
+        // Из символов, а слов для них нет: остальные варианты превратились бы в поиск «только по исполнителю»
+        if (IsSymbolOnly(n.BaseTitle)) yield break;
+
         if (n.Artist.Length > 0)
         {
             yield return new(n.Artist, n.Title, false, null, false);

@@ -103,12 +103,27 @@
         <Setter Property="HasDropShadow" Value="True"/>
         <Setter Property="Template">
             <Setter.Value>
+                <!-- Как ToolTip в Windows 11 (WinUI): скругление 4, поля 9,6,9,8, шрифт 12, ширина до 320, мягкая тень.
+                     Внешние поля Grid — место для тени -->
                 <ControlTemplate TargetType="ToolTip">
-                    <Border Background="{DynamicResource WindowBackground}" BorderBrush="{DynamicResource ControlBorder}"
-                            BorderThickness="1" CornerRadius="6" Padding="10,6">
-                        <ContentPresenter TextElement.Foreground="{DynamicResource MenuForeground}"
-                                          TextElement.FontFamily="{StaticResource UiFont}" TextElement.FontSize="12"/>
-                    </Border>
+                    <Grid Margin="8,6,8,10" SnapsToDevicePixels="True">
+                        <Border CornerRadius="4" Background="{DynamicResource ToolTipBackground}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.26" Color="Black"/>
+                            </Border.Effect>
+                        </Border>
+                        <Border Background="{DynamicResource ToolTipBackground}" BorderBrush="{DynamicResource ToolTipBorder}"
+                                BorderThickness="1" CornerRadius="4" Padding="9,6,9,8" MaxWidth="320">
+                            <ContentPresenter TextElement.Foreground="{DynamicResource ToolTipForeground}"
+                                              TextElement.FontFamily="{StaticResource UiFont}" TextElement.FontSize="12">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </Border>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

@@ -38,7 +38,15 @@ public static class LocalLyrics
                     full.Add(S(a + t));
                     full.Add(S(t + a));
                 }
+            // "∞" → "Бесконечность": файл может называться словами
+            if (n.Artist.Length > 0)
+                foreach (var alias in n.Aliases)
+                {
+                    full.Add(S(n.MainArtist + alias));
+                    full.Add(S(alias + n.MainArtist));
+                }
             var titleOnly = new HashSet<string> { S(n.Title), S(n.BareTitle), S(n.BaseTitle) };
+            titleOnly.UnionWith(n.Aliases.Select(S));
             titleOnly.Remove("");
 
             string? titleCandidate = null;

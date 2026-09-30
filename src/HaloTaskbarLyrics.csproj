@@ -12,8 +12,8 @@
     <AssemblyName>HaloTaskbarLyrics</AssemblyName>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
 
-    <!-- Версия программы. Для нового релиза поднять здесь и поставить такой же тег на GitHub: v0.1.0 -->
-    <Version>0.2.0</Version>
+    <!-- Версия программы. Для нового релиза поднять здесь и поставить такой же тег на GitHub: v0.2.0 -->
+    <Version>0.3.0</Version>
 
     <!-- Сведения о программе в свойствах exe. Файл без них антивирусы считают подозрительнее -->
     <Product>HaloTaskbarLyrics</Product>

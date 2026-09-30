@@ -1054,17 +1054,20 @@ public sealed class LyricsFlyout : Window
 
     void SetCurrent(int idx)
     {
+        // Список только что построен (панель открылась или сменился трек) — текущая строка просто стоит на месте.
+        // Анимация появления — только когда строка действительно сменилась, как на панели задач
+        bool animate = _current != int.MinValue;
         if (_currentRow != null) MakeNormal(_currentRow);
         _currentRow = null;
         _current = idx;
-        if (idx >= 0 && idx < _rows.Count) MakeCurrent(_rows[idx]);
+        if (idx >= 0 && idx < _rows.Count) MakeCurrent(_rows[idx], animate);
     }
 
     /// <summary>
     /// Строка становится текущей — как новая строка на панели задач: буквы всплывают по одной под углом,
     /// строка размыта и проясняется, потом проявляется свечение пропетого.
     /// </summary>
-    void MakeCurrent(LineRow r)
+    void MakeCurrent(LineRow r, bool animate = true)
     {
         _currentRow = r;
         var sung = _accentSung ? _sung : _fg;
@@ -1078,10 +1081,22 @@ public sealed class LyricsFlyout : Window
         tb.Foreground = brush;
         AttachGlow(r);
 
+        if (!animate)
+        {
+            tb.Effect = null;
+            tb.TextEffects = null;
+            SplitFill(r, sung, dim);
+            r.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            r.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            r.Scale.ScaleX = r.Scale.ScaleY = 1;
+            ShowGlow();
+            return;
+        }
+
         bool letters = _host.Prefs.LetterFx;
         var blur = new BlurEffect
         {
-            Radius = letters ? OverlayWindow.LetterBlur : BlurMax,
+            Radius = letters ? _host.LetterBlurNow : BlurMax,
             KernelType = KernelType.Gaussian,
             RenderingBias = RenderingBias.Performance,
         };

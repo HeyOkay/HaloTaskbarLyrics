@@ -15,16 +15,15 @@
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Opacity" Value="0"/>
             <Setter Property="IsHitTestVisible" Value="False"/>
-            <!-- Окно прозрачное, ClearType в нём недоступен: чёткий режим с выравниванием по пикселям -->
-            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <!-- Окно прозрачное, ClearType в нём недоступен: сглаженный режим без привязки к пикселям (без лесенки) -->
+            <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
         </Style>
     </Window.Resources>
 
     <!-- Фон полностью прозрачный: клики проходят сквозь виджет на панель задач. Ловит клики только HitZone -->
-    <Border x:Name="Root" Background="{x:Null}" Padding="10,0" Cursor="SizeWE" ClipToBounds="True"
-            ToolTipService.InitialShowDelay="600">
+    <Border x:Name="Root" Background="{x:Null}" Padding="10,0" Cursor="SizeWE" ClipToBounds="True">
         <!-- Слева — строка текста, справа — кольцо-визуализатор (видно всегда, стоит как ещё один значок трея) -->
         <Grid x:Name="Stage">
             <Grid.ColumnDefinitions>

@@ -65,6 +65,9 @@ public static class Theme
             Set("ControlBackground", Color.FromRgb(0xFF, 0xFF, 0xFF));
             Set("ControlBorder", Color.FromArgb(0x29, 0x00, 0x00, 0x00));
             Set("ScrollThumb", Color.FromArgb(0x55, 0x00, 0x00, 0x00));
+            Set("ToolTipBackground", Color.FromRgb(0xF9, 0xF9, 0xF9));
+            Set("ToolTipBorder", Color.FromArgb(0x0F, 0x00, 0x00, 0x00));
+            Set("ToolTipForeground", Color.FromArgb(0xE4, 0x00, 0x00, 0x00));
         }
         else
         {
@@ -78,6 +81,9 @@ public static class Theme
             Set("ControlBackground", Color.FromRgb(0x2D, 0x2D, 0x2D));
             Set("ControlBorder", Color.FromArgb(0x29, 0xFF, 0xFF, 0xFF));
             Set("ScrollThumb", Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
+            Set("ToolTipBackground", Color.FromRgb(0x2C, 0x2C, 0x2C));
+            Set("ToolTipBorder", Color.FromArgb(0x66, 0x00, 0x00, 0x00));
+            Set("ToolTipForeground", Colors.White);
         }
 
         Set("Accent", accent);
